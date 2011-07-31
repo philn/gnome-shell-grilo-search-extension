@@ -297,16 +297,12 @@ GriloSearchProvider.prototype = {
         let textureCache = St.TextureCache.get_default();
         let size = iconActor.iconSize;
 
-        if (iconActor.icon)
-            iconActor.icon.destroy();
-        iconActor.icon = textureCache.load_uri_async(uri, size, size);
-        iconActor.icon.set_size(size, size);
-        iconActor._iconBin.child = iconActor.icon;
+        iconActor.createIcon = function(size) {
+            return textureCache.load_uri_async(uri, size, size);
+        };
 
-        // let box = iconActor.actor.child;
-        // let grid = box.get_parent();
-        // grid.removeItem(box);
-        // grid.addItem(box);
+        // This should trigger a call to createIcon().
+        iconActor.actor.emit('style-changed');
     },
 
     createResultActor: function(resultMeta, terms) {
