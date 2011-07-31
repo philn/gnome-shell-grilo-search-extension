@@ -9,6 +9,7 @@ const Shell = imports.gi.Shell;
 const Soup = imports.gi.Soup;
 const St = imports.gi.St;
 
+const IconGrid = imports.ui.iconGrid;
 const Lang = imports.lang;
 const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
@@ -188,32 +189,8 @@ function SHA1 (msg) {
     temp = cvt_hex(H0) + cvt_hex(H1) + cvt_hex(H2) + cvt_hex(H3) + cvt_hex(H4);
     
     return temp.toLowerCase();
-    
 }
 
-function ensureCachedThumbnail(cacheDirectory, soupSession, media, size) {
-    let thumbnailUrl = media.get_thumbnail();
-    let thumbnailFilename = SHA1(thumbnailUrl);
-    let file = cacheDirectory + '/' + thumbnailFilename;
-    let uri = GLib.filename_to_uri(file, null);
-    let textureCache = St.TextureCache.get_default();
-
-    if (GLib.file_test(file, GLib.FileTest.EXISTS))
-        return textureCache.load_uri_async(uri, size, size);
-
-    let f = Gio.file_new_for_path(file);
-    let raw = f.replace(null, false, Gio.FileCreateFlags.NONE, null);
-    let out = Gio.BufferedOutputStream.new_sized(raw, 4096);
-
-    // FIXME: it'd be nice to be able to use an async soup-session.
-    // searchDisplay should display place-holder icons while
-    // thumbnails loading is done in the background.
-    let msg = Soup.Message.new("GET", media.get_thumbnail());
-    let status = soupSession.send_message(msg);
-    Shell.write_soup_message_to_stream(out, msg);
-    out.close(null);
-    return textureCache.load_uri_async(uri, size, size);
-}
 
 function GriloSearchProvider(registry, source) {
     this._init(registry, source);
@@ -288,14 +265,86 @@ GriloSearchProvider.prototype = {
 
     getResultMeta: function(resultId) {
         let media = this._medias[resultId];
+        if (!media)
+            return null;
+
         let cacheDir = this._cacheDir;
         let soupSession = this._soupSession;
         return { 'id': resultId,
                  'name': media.get_title(),
-                 'createIcon': function(size) {
-                     return ensureCachedThumbnail(cacheDir, soupSession, media, size);
-                 }
+                 'media': media
                };
+    },
+
+    _cachedThumbnail: function(media) {
+        let thumbnailUrl = media.get_thumbnail();
+        let thumbnailFilename = SHA1(thumbnailUrl);
+        let file = this._cacheDir + '/' + thumbnailFilename;
+        return file;
+    },
+
+    _writeThumbnailToDisk: function(session, msg, userData) {
+        let file = userData['file'];
+        let iconActor = userData['iconActor'];
+        let uri = GLib.filename_to_uri(file, null);
+        let f = Gio.file_new_for_path(file);
+        let raw = f.replace(null, false, Gio.FileCreateFlags.NONE, null);
+        let out = Gio.BufferedOutputStream.new_sized(raw, 4096);
+
+        Shell.write_soup_message_to_stream(out, msg);
+        out.close(null);
+
+        // Load written picture file to the icon's actor.
+
+        let textureCache = St.TextureCache.get_default();
+        let size = iconActor.iconSize;
+
+        if (iconActor.icon)
+            iconActor.icon.destroy();
+        iconActor.icon = textureCache.load_uri_async(uri, size, size);
+        iconActor.icon.set_size(size, size);
+        iconActor._iconBin.child = iconActor.icon;
+
+        // let box = iconActor.actor.child;
+        // let grid = box.get_parent();
+        // grid.removeItem(box);
+        // grid.addItem(box);
+    },
+
+    createResultActor: function(resultMeta, terms) {
+        let content = new St.Bin({ style_class: 'search-result-content',
+                               reactive: true,
+                               track_hover: true });
+        let icon;
+        let media = resultMeta['media'];
+        let cachedThumbnail = this._cachedThumbnail(media);
+        let textureCache = St.TextureCache.get_default();
+
+        if (GLib.file_test(cachedThumbnail, GLib.FileTest.EXISTS)) {
+            let uri = GLib.filename_to_uri(cachedThumbnail, null);
+            icon = new IconGrid.BaseIcon(resultMeta['name'],
+                                         { createIcon: function(size) {
+                                           return textureCache.load_uri_async(uri, size, size);
+                                           }
+                                         });
+        } else {
+            // Asynchronously load the thumbnail into a place-holder.
+            icon = new IconGrid.BaseIcon(resultMeta['name'],
+                                     { createIcon: function(size) {
+                                           return new St.Icon ({ icon_name: 'system-run',
+                                                                 icon_size: size});
+                                           }
+                                         });
+            let msg = Soup.Message.new("GET", media.get_thumbnail());
+            let userData = {
+                'file': cachedThumbnail,
+                'iconActor': icon
+            };
+            this._soupSession.queue_message(msg, Lang.bind(this, this._writeThumbnailToDisk, userData));
+        }
+
+        content.set_child(icon.actor);
+        return content;
     },
 
     _makeLaunchContext: function(params) {
