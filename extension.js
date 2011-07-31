@@ -364,7 +364,10 @@ GriloSearchProvider.prototype = {
     activateResult: function(id, params) {
         let media = this._medias[id];
         let url = media.get_url();
-        Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
+        if (!url)
+            url = media.get_external_url();
+        if (url)
+            Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
     },
 
     getInitialResultSet: function(terms) {
