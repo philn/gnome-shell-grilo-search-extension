@@ -217,10 +217,8 @@ GriloSearchProvider.prototype = {
             return;
         }
 
-        if (this._searchId < 0) {
-            global.log("Search was cancelled");
+        if (this._searchId < 0)
             return;
-        }
 
         if (media) {
             this._medias[media.get_id()] = media;
@@ -228,7 +226,6 @@ GriloSearchProvider.prototype = {
 
         if (!remaining) {
             this._searchId = -1;
-            global.log("Search finished");
             let keys = [];
             for (var key in this._medias) {
                 keys.push(key);
