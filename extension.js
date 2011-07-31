@@ -10,6 +10,7 @@ const Soup = imports.gi.Soup;
 const St = imports.gi.St;
 
 const IconGrid = imports.ui.iconGrid;
+const Panel = imports.ui.panel;
 const Lang = imports.lang;
 const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
@@ -323,13 +324,15 @@ GriloSearchProvider.prototype = {
                                          });
         } else {
             // Asynchronously load the thumbnail into a place-holder.
-            // TODO: nice animation of the icon actor while download is done?
-            icon = new IconGrid.BaseIcon(resultMeta['name'],
-                                     { createIcon: function(size) {
-                                           return new St.Icon ({ icon_name: 'system-run',
-                                                                 icon_size: size});
-                                           }
-                                         });
+            icon = new IconGrid.BaseIcon(resultMeta['name']);
+            icon.spinner = new Panel.AnimatedIcon('process-working.svg', Panel.PANEL_ICON_SIZE);
+
+            icon.createIcon = function(size) {
+                // FIXME: This requires a patched shell icongrid.js :/
+                icon.spinner.actor.show();
+                return icon.spinner;
+            };
+
             let msg = Soup.Message.new("GET", media.get_thumbnail());
             let userData = {
                 'file': cachedThumbnailPath,
