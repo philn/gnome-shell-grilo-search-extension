@@ -257,7 +257,6 @@ GriloSearchProvider.prototype = {
     },
 
     _asyncCancelled: function() {
-        let source = this._source;
         this._soupSession.abort();
         if (this._searchId > -1)
             Grl.operation_cancel(this._searchId);
@@ -269,15 +268,13 @@ GriloSearchProvider.prototype = {
         if (!media)
             return null;
 
-        let cacheDir = this._cacheDir;
-        let soupSession = this._soupSession;
         return { 'id': resultId,
                  'name': media.get_title(),
                  'media': media
                };
     },
 
-    _cachedThumbnail: function(media) {
+    _cachedThumbnailPath: function(media) {
         let thumbnailUrl = media.get_thumbnail();
         let thumbnailFilename = SHA1(thumbnailUrl);
         let file = this._cacheDir + '/' + thumbnailFilename;
@@ -318,11 +315,11 @@ GriloSearchProvider.prototype = {
                                track_hover: true });
         let icon;
         let media = resultMeta['media'];
-        let cachedThumbnail = this._cachedThumbnail(media);
+        let cachedThumbnailPath = this._cachedThumbnailPath(media);
         let textureCache = St.TextureCache.get_default();
 
-        if (GLib.file_test(cachedThumbnail, GLib.FileTest.EXISTS)) {
-            let uri = GLib.filename_to_uri(cachedThumbnail, null);
+        if (GLib.file_test(cachedThumbnailPath, GLib.FileTest.EXISTS)) {
+            let uri = GLib.filename_to_uri(cachedThumbnailPath, null);
             icon = new IconGrid.BaseIcon(resultMeta['name'],
                                          { createIcon: function(size) {
                                            return textureCache.load_uri_async(uri, size, size);
@@ -330,6 +327,7 @@ GriloSearchProvider.prototype = {
                                          });
         } else {
             // Asynchronously load the thumbnail into a place-holder.
+            // TODO: nice animation of the icon actor while download is done?
             icon = new IconGrid.BaseIcon(resultMeta['name'],
                                      { createIcon: function(size) {
                                            return new St.Icon ({ icon_name: 'system-run',
@@ -338,7 +336,7 @@ GriloSearchProvider.prototype = {
                                          });
             let msg = Soup.Message.new("GET", media.get_thumbnail());
             let userData = {
-                'file': cachedThumbnail,
+                'file': cachedThumbnailPath,
                 'iconActor': icon
             };
             this._soupSession.queue_message(msg, Lang.bind(this, this._writeThumbnailToDisk, userData));
@@ -390,10 +388,10 @@ function main() {
     youtubeConfig.set_api_key("AI39si4EfscPllSfUy1IwexMf__kntTL_G5dfSr2iUEVN45RHGq92Aq0lX25OlnOkG6KTN-4soVAkAf67fWYXuHfVADZYr7S1A");
     registry.add_config(youtubeConfig, null);
 
-    let vimeoConfig = Grl.Config.new("grl-vimeo", null);
-    vimeoConfig.set_api_key("4d908c69e05a9d5b5c6669d302f920cb");
-    vimeoConfig.set_api_secret("4a923ffaab6238eb");
-    registry.add_config(vimeoConfig, null);
+    // let vimeoConfig = Grl.Config.new("grl-vimeo", null);
+    // vimeoConfig.set_api_key("4d908c69e05a9d5b5c6669d302f920cb");
+    // vimeoConfig.set_api_secret("4a923ffaab6238eb");
+    // registry.add_config(vimeoConfig, null);
 
     let flickrConfig = Grl.Config.new("grl-flickr", null);
     flickrConfig.set_api_key("fa037bee8120a921b34f8209d715a2fa");
