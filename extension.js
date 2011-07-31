@@ -265,8 +265,11 @@ GriloSearchProvider.prototype = {
         if (!media)
             return null;
 
+        let name = media.get_title();
+        if (!name)
+            name = "";
         return { 'id': resultId,
-                 'name': media.get_title(),
+                 'name': name,
                  'media': media
                };
     },
