@@ -191,33 +191,28 @@ function SHA1 (msg) {
     
 }
 
-function ensureCachedThumbnail(cacheDirectory, media) {
-    let thumbnail_url = media.get_thumbnail();
-    let thumbnail_filename = SHA1(thumbnail_url);
-    let file = cacheDirectory + '/' + thumbnail_filename;
+function ensureCachedThumbnail(cacheDirectory, soupSession, media, size) {
+    let thumbnailUrl = media.get_thumbnail();
+    let thumbnailFilename = SHA1(thumbnailUrl);
+    let file = cacheDirectory + '/' + thumbnailFilename;
     let uri = GLib.filename_to_uri(file, null);
+    let textureCache = St.TextureCache.get_default();
 
     if (GLib.file_test(file, GLib.FileTest.EXISTS))
-        return uri;
+        return textureCache.load_uri_async(uri, size, size);
 
     let f = Gio.file_new_for_path(file);
-    let raw = f.replace(null, false,
-                        Gio.FileCreateFlags.NONE,
-                        null);
-
+    let raw = f.replace(null, false, Gio.FileCreateFlags.NONE, null);
     let out = Gio.BufferedOutputStream.new_sized(raw, 4096);
 
-    let success = false;
-    try {
-        let session = new Soup.SessionSync();
-        let msg = Soup.Message.new("GET", media.get_thumbnail());
-        let status = session.send_message(msg);
-        Shell.write_soup_message_to_stream(out, msg);
-    } catch (e) {
-        logError(e, 'Error caching avatar data');
-    }
+    // FIXME: it'd be nice to be able to use an async soup-session.
+    // searchDisplay should display place-holder icons while
+    // thumbnails loading is done in the background.
+    let msg = Soup.Message.new("GET", media.get_thumbnail());
+    let status = soupSession.send_message(msg);
+    Shell.write_soup_message_to_stream(out, msg);
     out.close(null);
-    return uri;
+    return textureCache.load_uri_async(uri, size, size);
 }
 
 function GriloSearchProvider(registry, source) {
@@ -233,6 +228,7 @@ GriloSearchProvider.prototype = {
         this._source = source;
         this._searchId = -1;
         this._medias = {};
+        this._soupSession = new Soup.SessionSync();
         this._cacheDir = GLib.get_user_cache_dir() + '/gnome-shell/grilo';
         GLib.mkdir_with_parents(this._cacheDir, 0x1c0); // 0x1c0 = octal 0700
     },
@@ -266,11 +262,19 @@ GriloSearchProvider.prototype = {
     },
 
     _search: function(terms) {
+        let searchQuery = terms.join(' ');
+
+        // Avoid expensive search for too small criteria string.
+        if (searchQuery.length < 3)
+            return;
+
+        global.log("Search query: " + searchQuery);
+
         let source = this._source;
-        // TODO: limit search to id, title, url, thumbnail keys?
-        let keys = this._registry.get_metadata_keys();
+        let keys = [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_URL,
+                    Grl.METADATA_KEY_EXTERNAL_URL, Grl.METADATA_KEY_THUMBNAIL];
         this.startAsync();
-        this._searchId = source.search(terms[0], keys, 0, 10,
+        this._searchId = source.search(searchQuery, keys, 0, 10,
                                        Grl.MetadataResolutionFlags.IDLE_RELAY | Grl.MetadataResolutionFlags.RESOLVE_FAST_ONLY,
                                        Lang.bind(this, this._searchCallback), null);
     },
@@ -285,41 +289,41 @@ GriloSearchProvider.prototype = {
     getResultMeta: function(resultId) {
         let media = this._medias[resultId];
         let cacheDir = this._cacheDir;
+        let soupSession = this._soupSession;
         return { 'id': resultId,
                  'name': media.get_title(),
                  'createIcon': function(size) {
-                     let textureCache = St.TextureCache.get_default();
-                     let uri = ensureCachedThumbnail(cacheDir, media);
-                     return textureCache.load_uri_async(uri, size, size);
+                     return ensureCachedThumbnail(cacheDir, soupSession, media, size);
                  }
                };
     },
 
-    activateResult: function(id, params) {
+    _makeLaunchContext: function(params) {
         params = Params.parse(params, { workspace: null,
                                         timestamp: null });
+
+        let launchContext = global.create_app_launch_context();
+        if (params.workspace != null)
+            launchContext.set_desktop(params.workspace.index());
+        if (params.timestamp != null)
+            launchContext.set_timestamp(params.timestamp);
+
+        return launchContext;
+    },
+
+    activateResult: function(id, params) {
         let media = this._medias[id];
         let url = media.get_url();
-        try {
-            Gio.app_info_launch_default_for_uri(url, global.create_app_launch_context());
-        } catch (e) {
-            // TODO: remove this after glib will be removed from moduleset
-            // In the default jhbuild, gio is in our prefix but gvfs is not
-            Util.spawn(['gvfs-open', url]);
-        }
-
-        Main.overview.hide();
+        Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
     },
 
     getInitialResultSet: function(terms) {
         this._medias = {};
-        global.log("Search terms " + terms[0]);
         this._search(terms);
         return [];
     },
 
     getSubsearchResultSet: function(previousResults, terms) {
-        global.log("sub Search terms " + terms);
         this.tryCancelAsync();
         return this.getInitialResultSet(terms);
     }
@@ -349,7 +353,6 @@ function main() {
     for(let i=0; i < sources.length; i++) {
         let source = sources[i];
         let sourceId = source.get_id();
-        global.log(source.get_id());
         if (sourceId == "grl-filesystem")
             continue;
         Main.overview.viewSelector.addSearchProvider(new GriloSearchProvider(registry, source));
