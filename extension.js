@@ -258,6 +258,7 @@ GriloSearchProvider.prototype = {
 
     _asyncCancelled: function() {
         let source = this._source;
+        this._soupSession.abort();
         if (this._searchId > -1)
             Grl.operation_cancel(this._searchId);
         this._searchId = -1;
