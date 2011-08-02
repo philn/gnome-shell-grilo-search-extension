@@ -267,6 +267,7 @@ GriloSearchProvider.prototype = {
 
         let source = this._source;
         let keys = [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_URL,
+                    Grl.METADATA_KEY_SITE,
                     Grl.METADATA_KEY_EXTERNAL_URL, Grl.METADATA_KEY_THUMBNAIL];
         this.startAsync();
         this._searchId = source.search(searchQuery, keys, 0, 12,
@@ -378,13 +379,33 @@ GriloSearchProvider.prototype = {
         return launchContext;
     },
 
-    activateResult: function(id, params) {
-        let media = this._medias[id];
+    _gotMetadata: function(source, operationId, media, params) {
         let url = media.get_url();
-        if (!url)
-            url = media.get_external_url();
         if (url)
             Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
+    },
+
+    _processMetadata: function(media, params) {
+        let keys = [Grl.METADATA_KEY_URL];
+        let flags = Grl.MetadataResolutionFlags.IDLE_RELAY | Grl.MetadataResolutionFlags.FULL;
+        this._source.metadata(media, keys, flags, Lang.bind(this, this._gotMetadata, params));
+    },
+
+    activateResult: function(id, params) {
+        let media = this._medias[id];
+        let url;
+        if (this._source.get_id() == "grl-youtube")
+            url = media.get_site();
+        else
+            url = media.get_url();
+        global.log("media url " + url);
+        if (!url)
+            url = media.get_external_url();
+        global.log("media external url " + url);
+        if (url)
+            Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
+        else
+            this._processMetadata(media, params);
     },
 
     getInitialResultSet: function(terms) {
@@ -407,10 +428,10 @@ function main() {
     youtubeConfig.set_api_key("AI39si4EfscPllSfUy1IwexMf__kntTL_G5dfSr2iUEVN45RHGq92Aq0lX25OlnOkG6KTN-4soVAkAf67fWYXuHfVADZYr7S1A");
     registry.add_config(youtubeConfig, null);
 
-    // let vimeoConfig = Grl.Config.new("grl-vimeo", null);
-    // vimeoConfig.set_api_key("4d908c69e05a9d5b5c6669d302f920cb");
-    // vimeoConfig.set_api_secret("4a923ffaab6238eb");
-    // registry.add_config(vimeoConfig, null);
+    let vimeoConfig = Grl.Config.new("grl-vimeo", null);
+    vimeoConfig.set_api_key("4d908c69e05a9d5b5c6669d302f920cb");
+    vimeoConfig.set_api_secret("4a923ffaab6238eb");
+    registry.add_config(vimeoConfig, null);
 
     let flickrConfig = Grl.Config.new("grl-flickr", null);
     flickrConfig.set_api_key("fa037bee8120a921b34f8209d715a2fa");
