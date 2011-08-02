@@ -193,6 +193,9 @@ function SHA1 (msg) {
 }
 
 
+let registered_providers = [];
+let current_provider = 0;
+
 function GriloSearchProvider(registry, source) {
     this._init(registry, source);
 }
@@ -233,17 +236,29 @@ GriloSearchProvider.prototype = {
             }
             this.addItems(keys);
             //this._medias = {};
+            if (registered_providers[current_provider] == this) {
+                // Perform search on next provider.
+                current_provider++;
+                if (current_provider < registered_providers.length)
+                    registered_providers[current_provider].getInitialResultSet(this._terms);
+            }
+            if (current_provider == registered_providers.length)
+                current_provider = 0;
         }
     },
 
     _search: function(terms) {
         let searchQuery = terms.join(' ');
+        this._terms = terms;
 
         // Avoid expensive search for too small criteria string.
         if (searchQuery.length < 3)
             return;
 
-        global.log("Search query: " + searchQuery);
+        if (registered_providers[current_provider] != this)
+            return;
+
+        global.log("Search query in " + this._source.get_id() + ": " + searchQuery);
 
         let source = this._source;
         let keys = [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_URL,
@@ -405,6 +420,8 @@ function main() {
         let sourceId = source.get_id();
         if (sourceId == "grl-filesystem")
             continue;
-        Main.overview.viewSelector.addSearchProvider(new GriloSearchProvider(registry, source));
+        let provider = new GriloSearchProvider(registry, source);
+        Main.overview.viewSelector.addSearchProvider(provider);
+        registered_providers.push(provider);
     }
 }
