@@ -218,6 +218,7 @@ GriloSearchProvider.prototype = {
         if (error) {
             global.log("Search failed " + error.message);
             //this._medias = {};
+            this.performSearchOnNextProvider();
             return;
         }
 
@@ -236,15 +237,19 @@ GriloSearchProvider.prototype = {
             }
             this.addItems(keys);
             //this._medias = {};
-            if (registered_providers[current_provider] == this) {
-                // Perform search on next provider.
-                current_provider++;
-                if (current_provider < registered_providers.length)
-                    registered_providers[current_provider].getInitialResultSet(this._terms);
-            }
-            if (current_provider == registered_providers.length)
-                current_provider = 0;
+            this.performSearchOnNextProvider();
         }
+    },
+
+    performSearchOnNextProvider: function() {
+        if (registered_providers[current_provider] == this) {
+            // Perform search on next provider.
+            current_provider++;
+            if (current_provider < registered_providers.length)
+                registered_providers[current_provider].getInitialResultSet(this._terms);
+        }
+        if (current_provider == registered_providers.length)
+            current_provider = 0;
     },
 
     _search: function(terms) {
