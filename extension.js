@@ -269,7 +269,7 @@ GriloSearchProvider.prototype = {
         let keys = [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_URL,
                     Grl.METADATA_KEY_EXTERNAL_URL, Grl.METADATA_KEY_THUMBNAIL];
         this.startAsync();
-        this._searchId = source.search(searchQuery, keys, 0, 10,
+        this._searchId = source.search(searchQuery, keys, 0, 12,
                                        Grl.MetadataResolutionFlags.IDLE_RELAY | Grl.MetadataResolutionFlags.RESOLVE_FAST_ONLY,
                                        Lang.bind(this, this._searchCallback), null);
     },
