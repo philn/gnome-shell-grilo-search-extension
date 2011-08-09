@@ -351,7 +351,7 @@ GriloSearchProvider.prototype = {
             icon.createIcon = function(size) {
                 // FIXME: This requires a patched shell icongrid.js :/
                 icon.spinner.actor.show();
-                return icon.spinner;
+                return icon.spinner.actor;
             };
 
             let msg = Soup.Message.new("GET", media.get_thumbnail());
