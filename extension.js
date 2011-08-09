@@ -196,6 +196,36 @@ function SHA1 (msg) {
 let registered_providers = [];
 let current_provider = 0;
 
+function GriloItemInfo(timestamp, name, uri, mime_type) {
+    this._init(timestamp, name, uri, mime_type);
+}
+
+// This class emulates a RecentItemInfo
+GriloItemInfo.prototype = {
+    _init: function(timestamp, name, uri, mime_type) {
+        this._timestamp = timestamp;
+        this._name = name;
+        this._uri = uri;
+        this._mime_type = mime_type;
+    },
+
+    get_modified: function() {
+        return this._timestamp;
+    },
+
+    get_display_name: function() {
+        return this._name;
+    },
+
+    get_uri: function() {
+        return this._uri;
+    },
+
+    get_mime_type: function() {
+        return this._mime_type;
+    }
+}
+
 function GriloSearchProvider(registry, source) {
     this._init(registry, source);
 }
@@ -267,7 +297,7 @@ GriloSearchProvider.prototype = {
 
         let source = this._source;
         let keys = [Grl.METADATA_KEY_ID, Grl.METADATA_KEY_TITLE, Grl.METADATA_KEY_URL,
-                    Grl.METADATA_KEY_SITE,
+                    Grl.METADATA_KEY_MIME, Grl.METADATA_KEY_SITE,
                     Grl.METADATA_KEY_EXTERNAL_URL, Grl.METADATA_KEY_THUMBNAIL];
         this.startAsync();
         this._searchId = source.search(searchQuery, keys, 0, 12,
@@ -379,10 +409,22 @@ GriloSearchProvider.prototype = {
         return launchContext;
     },
 
+    _createItemForMedia: function(media, url) {
+        let mimeType = media.get_mime();
+        if (!mimeType)
+            mimeType = "image/jpeg";
+        global.log("media mime: " + mimeType);
+        let item = new GriloItemInfo(new Date().getTime(),
+                                     media.get_title(), url, mimeType);
+        return item;
+    },
+
     _gotMetadata: function(source, operationId, media, params) {
         let url = media.get_url();
-        if (url)
-            Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
+        if (url) {
+            let item = this._createItemForMedia(media, url);
+            Gio.app_info_launch_default_for_uri(item.get_uri(), this._makeLaunchContext(params));
+        }
     },
 
     _processMetadata: function(media, params) {
@@ -402,8 +444,10 @@ GriloSearchProvider.prototype = {
         if (!url)
             url = media.get_external_url();
         global.log("media external url " + url);
-        if (url)
-            Gio.app_info_launch_default_for_uri(url, this._makeLaunchContext(params));
+        if (url) {
+            let item = this._createItemForMedia(media, url);
+            Gio.app_info_launch_default_for_uri(item.get_uri(), this._makeLaunchContext(params));
+        }
         else
             this._processMetadata(media, params);
     },
