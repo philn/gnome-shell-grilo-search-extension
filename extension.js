@@ -193,8 +193,6 @@ function SHA1 (msg) {
 }
 
 
-let registered_providers = [];
-let current_provider = 0;
 
 function GriloItemInfo(timestamp, name, uri, mime_type) {
     this._init(timestamp, name, uri, mime_type);
@@ -226,16 +224,16 @@ GriloItemInfo.prototype = {
     }
 }
 
-function GriloSearchProvider(registry, source) {
-    this._init(registry, source);
+function GriloSearchProvider(extension, source) {
+    this._init(extension, source);
 }
 
 GriloSearchProvider.prototype = {
     __proto__: Search.SearchProvider.prototype,
 
-    _init: function(registry, source) {
+    _init: function(extension, source) {
         Search.SearchProvider.prototype._init.call(this, source.get_name());
-        this._registry = registry;
+        this._extension = extension;
         this._source = source;
         this._searchId = -1;
         this._medias = {};
@@ -272,14 +270,7 @@ GriloSearchProvider.prototype = {
     },
 
     performSearchOnNextProvider: function() {
-        if (registered_providers[current_provider] == this) {
-            // Perform search on next provider.
-            current_provider++;
-            if (current_provider < registered_providers.length)
-                registered_providers[current_provider].getInitialResultSet(this._terms);
-        }
-        if (current_provider == registered_providers.length)
-            current_provider = 0;
+        this._extension.nextProvider(this, this._terms);
     },
 
     _search: function(terms) {
@@ -290,7 +281,7 @@ GriloSearchProvider.prototype = {
         if (searchQuery.length < 3)
             return;
 
-        if (registered_providers[current_provider] != this)
+        if (!this._extension.canSearch(this))
             return;
 
         global.log("Search query in " + this._source.get_id() + ": " + searchQuery);
@@ -379,7 +370,8 @@ GriloSearchProvider.prototype = {
             icon.spinner = new Panel.AnimatedIcon('process-working.svg', Panel.PANEL_ICON_SIZE);
 
             icon.createIcon = function(size) {
-                // FIXME: This requires a patched shell icongrid.js :/
+                // FIXME: This requires a patched shell icongrid.js
+                // https://bugzilla.gnome.org/show_bug.cgi?id=655831
                 icon.spinner.actor.show();
                 return icon.spinner.actor;
             };
@@ -464,34 +456,74 @@ GriloSearchProvider.prototype = {
     }
 };
 
-function main() {
-    Grl.init(null, null);
-    let registry = Grl.PluginRegistry.get_default();
+function GriloSearchExtension() {
+    this._init();
+}
 
-    let youtubeConfig = Grl.Config.new("grl-youtube", null);
-    youtubeConfig.set_api_key("AI39si4EfscPllSfUy1IwexMf__kntTL_G5dfSr2iUEVN45RHGq92Aq0lX25OlnOkG6KTN-4soVAkAf67fWYXuHfVADZYr7S1A");
-    registry.add_config(youtubeConfig, null);
+GriloSearchExtension.prototype = {
+    _init: function() {
+        Grl.init(null, null);
+        this._registry = Grl.PluginRegistry.get_default();
+        this._registered_providers = [];
+        this._current_provider = 0;
 
-    let vimeoConfig = Grl.Config.new("grl-vimeo", null);
-    vimeoConfig.set_api_key("4d908c69e05a9d5b5c6669d302f920cb");
-    vimeoConfig.set_api_secret("4a923ffaab6238eb");
-    registry.add_config(vimeoConfig, null);
+        let youtubeConfig = Grl.Config.new("grl-youtube", null);
+        youtubeConfig.set_api_key("AI39si4EfscPllSfUy1IwexMf__kntTL_G5dfSr2iUEVN45RHGq92Aq0lX25OlnOkG6KTN-4soVAkAf67fWYXuHfVADZYr7S1A");
+        this._registry.add_config(youtubeConfig, null);
 
-    let flickrConfig = Grl.Config.new("grl-flickr", null);
-    flickrConfig.set_api_key("fa037bee8120a921b34f8209d715a2fa");
-    flickrConfig.set_api_secret("9f6523b9c52e3317");
-    registry.add_config(flickrConfig, null);
+        let vimeoConfig = Grl.Config.new("grl-vimeo", null);
+        vimeoConfig.set_api_key("4d908c69e05a9d5b5c6669d302f920cb");
+        vimeoConfig.set_api_secret("4a923ffaab6238eb");
+        this._registry.add_config(vimeoConfig, null);
 
-    registry.load_all();
+        let flickrConfig = Grl.Config.new("grl-flickr", null);
+        flickrConfig.set_api_key("fa037bee8120a921b34f8209d715a2fa");
+        flickrConfig.set_api_secret("9f6523b9c52e3317");
+        this._registry.add_config(flickrConfig, null);
 
-    let sources = registry.get_sources_by_operations(Grl.SupportedOps.SEARCH, false);
-    for(let i=0; i < sources.length; i++) {
-        let source = sources[i];
-        let sourceId = source.get_id();
-        if (sourceId == "grl-filesystem")
-            continue;
-        let provider = new GriloSearchProvider(registry, source);
-        Main.overview.viewSelector.addSearchProvider(provider);
-        registered_providers.push(provider);
+        this._registry.load_all();
+    },
+
+    enable: function() {
+        global.log("enable!");
+        let sources = this._registry.get_sources_by_operations(Grl.SupportedOps.SEARCH, false);
+        for(let i=0; i < sources.length; i++) {
+            let source = sources[i];
+            let sourceId = source.get_id();
+            if (sourceId == "grl-filesystem")
+                continue;
+            let provider = new GriloSearchProvider(this, source);
+            Main.overview.viewSelector.addSearchProvider(provider);
+            this._registered_providers.push(provider);
+        }
+    },
+
+    disable: function() {
+        global.log("disable!");
+        for(let i=0; i < this._registered_providers.length; i++) {
+            let provider = this._registered_providers[i];
+            Main.overview.viewSelector.removeSearchProvider(provider);
+        }
+        this._registered_providers = [];
+    },
+
+    nextProvider: function(provider, terms) {
+        if (this._registered_providers[this._current_provider] == provider) {
+            // Perform search on next provider.
+            this._current_provider++;
+            if (this._current_provider < this._registered_providers.length)
+                this._registered_providers[this._current_provider].getInitialResultSet(terms);
+        }
+        if (this._current_provider == this._registered_providers.length)
+            this._current_provider = 0;
+    },
+
+    canSearch: function(provider) {
+       return this._registered_providers[this._current_provider] == provider;
     }
+
+};
+
+function init() {
+    return new GriloSearchExtension();
 }
